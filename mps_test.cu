@@ -40,14 +40,13 @@ __global__ void delay_kernel(float *d_out, float *d_in, int n, uint64_t duration
 
 
 /** Kernel which does some fixed amount of work. */
-__global__ void busy_kernel(float *d_out, float *d_in, int n, uint64_t num_iterations) {
+__global__ void busy_kernel(float *d_out, float *d_in, int n, uint32_t num_iterations) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
 
     if (idx < n) {
         float temp = d_in[idx];
         // Loop that does some work to prevent compiler optimization
-        for (int i = 0; i < 100000000; i++) {
+        for (int i = 0; i < num_iterations; i++) {
             temp += sinf(temp);
         }
         d_out[idx] = temp;
@@ -57,10 +56,11 @@ __global__ void busy_kernel(float *d_out, float *d_in, int n, uint64_t num_itera
 int main(int argc, char *argv[]){
     // Duration for which the kernel should run (in milliseconds).
     uint32_t duration = 1000;
+    uint32_t num_iterations = 1024 * 1024 * 4;
 
     // Kernel launch params.
     int num_workgroups = 1024;
-    int workgroup_size = 256;
+    int workgroup_size = 128;
 
     // Scratchpad
     int n = 1024;
@@ -96,7 +96,8 @@ int main(int argc, char *argv[]){
     // Launch the kernel
     std::cout << "[" << pid << "] Launching kernel" << std::endl;
     auto now = std::chrono::high_resolution_clock::now();
-    delay_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, duration, clock_rate_khz);
+    // delay_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, duration, clock_rate_khz);
+    busy_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, num_iterations);
     cudaDeviceSynchronize();
     cudaCheckErrors("kernel fail");
     auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - now);
