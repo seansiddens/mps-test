@@ -113,3 +113,14 @@ $ nvidia-smi
 |  No running processes found                                                 |
 +-----------------------------------------------------------------------------+
 ```
+
+### Using the MIG GPU Instances
+
+We need to identify the unique IDs of the MIG instances we've created.
+Run `nvidia-smi -L` to list all GPU instances and their respective UUID.
+
+When running a CUDA program, we need to set the CUDA_VISIBLE_DEVICES environment variable to use our MIG instance:
+
+```
+CUDA_VISIBLE_DEVICES=<UUID> ./your_cuda_program
+```
