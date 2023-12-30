@@ -5,6 +5,11 @@
 #include <chrono>
 #include <unistd.h>
 
+enum class KernelType {
+    DELAY,
+    BUSY
+};
+
 #define cudaCheckErrors(msg) \
   do { \
     cudaError_t __err = cudaGetLastError(); \
@@ -54,9 +59,33 @@ __global__ void busy_kernel(float *d_out, float *d_in, int n, uint32_t num_itera
 }
 
 int main(int argc, char *argv[]){
-    // Duration for which the kernel should run (in milliseconds).
-    uint32_t duration = 1000;
-    uint32_t num_iterations = 1024 * 1024 * 4;
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " --delay <duration> or --busy <iterations>" << std::endl;   
+        return 1;
+    }
+
+    KernelType kernel_type;
+    int duration;
+    int num_iterations;
+    if (strcmp(argv[1], "--delay") == 0) {
+        kernel_type = KernelType::DELAY;
+        duration = atoi(argv[2]);
+        if (duration <= 0) {
+            std::cerr << "Duration must be > 0" << std::endl;
+            return 1;
+        }
+    } else if (strcmp(argv[1], "--busy") == 0) {
+        kernel_type = KernelType::BUSY;
+        num_iterations = atoi(argv[2]);
+        if (num_iterations <= 0) {
+            std::cerr << "Iterations must be > 0" << std::endl;
+            return 1;
+        }
+    } else {
+        std::cerr << "Usage: " << argv[0] << " --delay or --busy" << std::endl;   
+        return 1;
+    }
+    
 
     // Kernel launch params.
     int num_workgroups = 1024;
@@ -80,24 +109,27 @@ int main(int argc, char *argv[]){
     int clock_rate_khz;
     cudaDeviceGetAttribute(&clock_rate_khz, cudaDevAttrClockRate, device_id);
     std::cout << "[" << pid << "] Clock rate: " << clock_rate_khz << " kHz" << std::endl;
+    if (kernel_type == KernelType::DELAY) {
+        std::cout << "[" << pid << "] Duration: " << duration << " ms" << std::endl;
+    } else {
+        std::cout << "[" << pid << "] Iterations: " << num_iterations << std::endl;
+    }
 
     // Allocate device memory
     float *d_in, *d_out;
-    // uint64_t *d_duration;
-    // int *d_clock_rate_khz;
     cudaMalloc(&d_in, n * sizeof(float));
     cudaMalloc(&d_out, n * sizeof(float));
 
     // Copy input data to device
     cudaMemcpy(d_in, h_in, n * sizeof(float), cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_duration, &duration, sizeof(uint64_t), cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_clock_rate_khz, &clock_rate_khz, sizeof(int), cudaMemcpyHostToDevice);
 
     // Launch the kernel
     std::cout << "[" << pid << "] Launching kernel" << std::endl;
     auto now = std::chrono::high_resolution_clock::now();
-    // delay_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, duration, clock_rate_khz);
-    busy_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, num_iterations);
+    if (kernel_type == KernelType::DELAY)
+        delay_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, duration, clock_rate_khz);
+    else
+        busy_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, num_iterations);
     cudaDeviceSynchronize();
     cudaCheckErrors("kernel fail");
     auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - now);
