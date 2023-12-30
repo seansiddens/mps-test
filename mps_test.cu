@@ -3,7 +3,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <chrono>
-
+#include <unistd.h>
 
 #define cudaCheckErrors(msg) \
   do { \
@@ -16,6 +16,7 @@
         exit(1); \
     } \
   } while (0)
+
 
 /* Kernel which does work for some fixed duration of time (specified in milliseconds).
    https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#time-function
@@ -36,6 +37,7 @@ __global__ void delay_kernel(float *d_out, float *d_in, int n, uint64_t duration
         d_out[idx] = temp;
     }
 }
+
 
 /** Kernel which does some fixed amount of work. */
 __global__ void busy_kernel(float *d_out, float *d_in, int n, uint64_t num_iterations) {
@@ -68,14 +70,16 @@ int main(int argc, char *argv[]){
         h_in[i] = (float)i;
     }
 
+    int pid = getpid();
+
     // Get device info.
     int device_id = 0;
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, device_id); 
-    std::cout << "Device: " << prop.name << std::endl;
+    std::cout << "[" << pid << "] Device: " << prop.name << std::endl;
     int clock_rate_khz;
     cudaDeviceGetAttribute(&clock_rate_khz, cudaDevAttrClockRate, device_id);
-    std::cout << "Clock rate: " << clock_rate_khz << " kHz" << std::endl;
+    std::cout << "[" << pid << "] Clock rate: " << clock_rate_khz << " kHz" << std::endl;
 
     // Allocate device memory
     float *d_in, *d_out;
@@ -90,12 +94,13 @@ int main(int argc, char *argv[]){
     // cudaMemcpy(d_clock_rate_khz, &clock_rate_khz, sizeof(int), cudaMemcpyHostToDevice);
 
     // Launch the kernel
+    std::cout << "[" << pid << "] Launching kernel" << std::endl;
     auto now = std::chrono::high_resolution_clock::now();
     delay_kernel<<<num_workgroups, workgroup_size>>>(d_out, d_in, n, duration, clock_rate_khz);
     cudaDeviceSynchronize();
     cudaCheckErrors("kernel fail");
     auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - now);
-    std::cout << "Total time (host): " << total_time.count() << " ms" << std::endl;
+    std::cout << "[" << pid << "] Total time (host): " << total_time.count() << " ms" << std::endl;
     
     // Copy result back to host
     cudaMemcpy(h_out, d_out, n * sizeof(float), cudaMemcpyDeviceToHost);
